@@ -1,47 +1,48 @@
 pipeline {
     agent { label 'Jenkins-Agent' }
     tools {
-        jdk 'Java17'
+        jdk 'java17'
         maven 'maven3'
     }
 
-    environment {
+     environment {
 	    APP_NAME = "register-app-pipeline"
             RELEASE = "1.0.0"
             DOCKER_USER = "abhimankr"
             DOCKER_PASS = 'dockerhub'
             IMAGE_NAME = "${DOCKER_USER}" + "/" + "${APP_NAME}"
             IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
-	    JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
+	    
     }
 
-  
-    stages{
+
+stages{
         stage("Cleanup Workspace"){
                 steps {
                 cleanWs()
                 }
         }
 
-       stage("Checkout from SCM"){
+stage("Checkout from SCM"){
                 steps {
                     git branch: 'main', credentialsId: 'github', url: 'https://github.com/abhimankr/register-app.git'
                 }
         }
 
-       stage("Build Application"){
+stage("Build Application"){
             steps {
                 sh "mvn clean package"
             }
 
        }
 
-        stage("Test Application"){
+stage("Test Application"){
            steps {
                  sh "mvn test"
            }
        }
-        stage("SonarQube Analysis"){
+
+stage("SonarQube Analysis"){
            steps {
 	           script {
 		        withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') { 
@@ -50,8 +51,7 @@ pipeline {
 	           }	
            }
        }
-
-       stage("Quality Gate"){
+stage("Quality Gate"){
            steps {
                script {
                     waitForQualityGate abortPipeline: false, credentialsId: 'jenkins-sonarqube-token'
@@ -60,7 +60,7 @@ pipeline {
 
         }
 
-        stage("Build & Push Docker Image") {
+stage("Build & Push Docker Image") {
             steps {
                 script {
                     docker.withRegistry('',DOCKER_PASS) {
@@ -76,14 +76,23 @@ pipeline {
 
        }
 
-       stage("Trivy Scan") {
+stage("Trivy Scan") {
            steps {
                script {
 	            sh ('docker run -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image abhimankr/register-app-pipeline:latest --no-progress --scanners vuln  --exit-code 0 --severity HIGH,CRITICAL --format table')
                }
            }
        }
-    }
+
+stage ('Cleanup Artifacts') {
+           steps {
+               script {
+                    sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG}"
+                    sh "docker rmi ${IMAGE_NAME}:latest"
+               }
+          }
+       }
+
+
 }
-
-
+}
